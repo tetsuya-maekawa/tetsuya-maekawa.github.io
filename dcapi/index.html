@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>SD-JWT Credential Test</title>
+</head>
+<body>
+  <h1>SD-JWT Credential Request Test</h1>
+  <button id="requestBtn">Request SD-JWT Credential</button>
+  <pre id="result"></pre>
+
+  <script>
+    document.getElementById('requestBtn').addEventListener('click', async () => {
+      // Feature detection
+      if (typeof DigitalCredential === "undefined") {
+        document.getElementById('result').textContent = 
+          'Error: Digital Credentials API is not supported in this browser';
+        return;
+      }
+
+      try {
+        const credential = await navigator.credentials.get({
+          mediation: "required",
+          digital: {
+            requests: [{
+              protocol: "openid4vp-v1-unsigned",
+              data: {
+                client_id: location.origin,
+                response_type: "vp_token",
+                nonce: crypto.randomUUID(),
+                presentation_definition: {
+                  id: "sd-jwt-test",
+                  input_descriptors: [{
+                    id: "employee_card",
+                    format: {
+                      "dc+sd-jwt": {
+                        "alg": ["ES256"]
+                      }
+                    },
+                    constraints: {
+                      fields: [{
+                        path: ["$.vct"],
+                        filter: {
+                          type: "string",
+                          pattern: "EmployeeCard"
+                        }
+                      }]
+                    }
+                  }]
+                }
+              }
+            }]
+          }
+        });
+        
+        document.getElementById('result').textContent = 
+          JSON.stringify(credential, null, 2);
+      } catch (e) {
+        document.getElementById('result').textContent = 
+          'Error: ' + e.message;
+      }
+    });
+  </script>
+</body>
+</html>
