@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SD-JWT Credential Test</title>
   <style>
@@ -17,7 +18,7 @@
 </head>
 <body>
   <!-- <h1>SD-JWT Credential Request Test</h1> -->
-  <h1>SD-JWT Credential Request Test (v17)</h1>
+  <h1>SD-JWT Credential Request Test (v18)</h1>
   <button id="requestBtn">Request SD-JWT Credential</button>
   <pre id="result"></pre>
 
@@ -37,7 +38,39 @@
     return null;
   }
 
+  function extractSdJwtFromVpToken(vpToken){
+    if (Array.isArray(vpToken)) {
+      for (const item of vpToken) {
+        const sdjwt = extractSdJwtFromVpToken(item);
+        if (sdjwt) return sdjwt;
+      }
+      return null;
+    }
+    if (typeof vpToken === 'string') return vpToken;
+    if (vpToken && typeof vpToken === 'object') {
+      for (const value of Object.values(vpToken)) {
+        const sdjwt = extractSdJwtFromVpToken(value);
+        if (sdjwt) return sdjwt;
+      }
+      const sdjwt = vpToken['sd-jwt'] ?? vpToken.sd_jwt ?? vpToken.sdJwt;
+      if (typeof sdjwt !== 'string') return null;
+      const disclosures =
+        vpToken.disclosures ??
+        vpToken.disclosure ??
+        vpToken.sd_jwt_disclosures ??
+        vpToken.sdJwtDisclosures;
+      if (Array.isArray(disclosures) && disclosures.length) {
+        return [sdjwt, ...disclosures].join('~');
+      }
+      return sdjwt;
+    }
+    return null;
+  }
+
   function parseSdJwt(sdjwt){
+    if (typeof sdjwt !== 'string') {
+      throw new TypeError('sd-jwt must be a string');
+    }
     const parts = sdjwt.split('~');
     const disclosures = parts.slice(1).filter(p => p && !p.includes('.'));
     const claims = {};
@@ -90,13 +123,21 @@
       });
 
       document.getElementById('result').textContent = 'Processing credential...';
+      document.getElementById('result').textContent =
+        'Received credential:\\n' +
+        JSON.stringify(credential, null, 2);
+
+      console.log('Received credential:', credential);
 
       const vpToken = extractVpToken(credential);
       if (!vpToken) throw new Error('vp_token not found');
 
       document.getElementById('result').textContent = 'Parsing SD-JWT...';
 
-      const claims = parseSdJwt(vpToken);
+      const sdjwt = extractSdJwtFromVpToken(vpToken);
+      if (!sdjwt) throw new Error('sd-jwt not found in vp_token');
+
+      const claims = parseSdJwt(sdjwt);
 
       document.getElementById('result').textContent = 'SD-JWT parsed.';
 
