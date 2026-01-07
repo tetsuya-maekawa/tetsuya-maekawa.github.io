@@ -24,7 +24,7 @@
 </head>
 <body>
   <!-- <h1>SD-JWT Credential Request Test</h1> -->
-  <h1>Digital Credential Request Test (V20)</h1>
+  <h1>Digital Credential Request Test (V21)</h1>
   <div class="buttonRow">
     <button id="requestSdJwtBtn" class="requestBtn">Request SD-JWT Credential</button>
     <button id="requestMdocBtn" class="requestBtn">Request EU PID (mdoc)</button>
@@ -39,7 +39,9 @@
   }
 
   function formatError(e){
-    return 'Error: ' + (e.name ? e.name + ': ' : '') + e.message;
+    const name = e && e.name ? e.name + ': ' : '';
+    const message = e && e.message ? e.message : String(e);
+    return 'Error: ' + name + message;
   }
 
   function ensureDigitalCredentialSupported(){
@@ -55,11 +57,12 @@
   }
 
   function getRandomUUID(){
-    if (crypto && typeof crypto.randomUUID === 'function') {
-      return crypto.randomUUID();
+    const cryptoObj = typeof window !== 'undefined' ? window.crypto : undefined;
+    if (cryptoObj && typeof cryptoObj.randomUUID === 'function') {
+      return cryptoObj.randomUUID();
     }
-    if (crypto && typeof crypto.getRandomValues === 'function') {
-      const bytes = crypto.getRandomValues(new Uint8Array(16));
+    if (cryptoObj && typeof cryptoObj.getRandomValues === 'function') {
+      const bytes = cryptoObj.getRandomValues(new Uint8Array(16));
       bytes[6] = (bytes[6] & 0x0f) | 0x40;
       bytes[8] = (bytes[8] & 0x3f) | 0x80;
       const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0'));
@@ -88,6 +91,46 @@
     } catch (e) {
       return String(value);
     }
+  }
+
+  function getDebugInfo(){
+    return {
+      userAgent: navigator.userAgent,
+      isSecureContext: window.isSecureContext,
+      hasDigitalCredential: typeof DigitalCredential !== 'undefined',
+      hasNavigatorCredentials: !!navigator.credentials,
+      hasNavigatorCredentialsGet: typeof navigator.credentials?.get === 'function'
+    };
+  }
+
+  function isTypeError(e){
+    return e && e.name === 'TypeError';
+  }
+
+  function buildCredentialOptions(protocol, data){
+    return {
+      mediation: "required",
+      digital: {
+        requests: [{
+          protocol,
+          data
+        }]
+      }
+    };
+  }
+
+  async function requestWithFallbacks(optionsList){
+    let lastError;
+    for (const options of optionsList) {
+      try {
+        return await navigator.credentials.get(options);
+      } catch (e) {
+        lastError = e;
+        if (!isTypeError(e)) throw e;
+        console.warn('navigator.credentials.get TypeError, retrying...', e);
+      }
+    }
+    throw lastError;
   }
 
   function b64urlDecode(s){
@@ -154,36 +197,33 @@
     if (!ensureDigitalCredentialSupported()) return;
 
     try {
-      const credential = await navigator.credentials.get({
-        mediation: "required",
-        digital: {
-          requests: [{
-            protocol: "openid4vp-v1-unsigned",
-            data: {
-              client_id: location.origin,
-              client_id_scheme: "web-origin",
-              response_type: "vp_token",
-              response_mode: "dc_api",
-              state: getRandomUUID(),
-              nonce: getRandomUUID(),
-              dcql_query: {
-                credentials: [{
-                  id: "employee_card",
-                  format: "dc+sd-jwt",
-                  meta: {
-                    vct_values: ["SD_JWT_EmployeeCard"]
-                  },
-                  claims: [
-                    { path: ["displayName"] },
-                    { path: ["employeeId"] },
-                    { path: ["department"] }
-                  ]
-                }]
-              }
-            }
+      const data = {
+        client_id: location.origin,
+        client_id_scheme: "web-origin",
+        response_type: "vp_token",
+        response_mode: "dc_api",
+        state: getRandomUUID(),
+        nonce: getRandomUUID(),
+        dcql_query: {
+          credentials: [{
+            id: "employee_card",
+            format: "dc+sd-jwt",
+            meta: {
+              vct_values: ["SD_JWT_EmployeeCard"]
+            },
+            claims: [
+              { path: ["displayName"] },
+              { path: ["employeeId"] },
+              { path: ["department"] }
+            ]
           }]
         }
-      });
+      };
+
+      const credential = await requestWithFallbacks([
+        buildCredentialOptions("openid4vp-v1-unsigned", data),
+        buildCredentialOptions("openid4vp-v1", data)
+      ]);
 
       setResult('Processing credential...');
       setResult(
@@ -209,7 +249,7 @@
 
       setResult(JSON.stringify({ displayName, claims }, null, 2));
     } catch (e) {
-      setResult(formatError(e));
+      setResult(formatError(e) + '\n\n' + safeStringify(getDebugInfo()));
     }
   });
 
@@ -217,43 +257,44 @@
     if (!ensureDigitalCredentialSupported()) return;
 
     try {
-      const credential = await navigator.credentials.get({
-        mediation: "required",
-        digital: {
-          requests: [{
-            protocol: "openid4vp-v1-unsigned",
-            data: {
-              client_id: location.origin,
-              client_id_scheme: "web-origin",
-              response_type: "vp_token",
-              response_mode: "dc_api",
-              state: getRandomUUID(),
-              nonce: getRandomUUID(),
-              dcql_query: {
-                credentials: [{
-                  id: "eu_pid",
-                  format: "mso_mdoc",
-                  meta: {
-                    doctype_values: ["eu.europa.ec.eudi.pid.1"]
-                  },
-                  claims: [
-                    { path: ["eu.europa.ec.eudi.pid.1", "family_name"] },
-                    { path: ["eu.europa.ec.eudi.pid.1", "given_name"] },
-                    { path: ["eu.europa.ec.eudi.pid.1", "birth_date"] }
-                  ]
-                }]
-              }
-            }
+      const buildMdocData = (formatValue) => ({
+        client_id: location.origin,
+        client_id_scheme: "web-origin",
+        response_type: "vp_token",
+        response_mode: "dc_api",
+        state: getRandomUUID(),
+        nonce: getRandomUUID(),
+        dcql_query: {
+          credentials: [{
+            id: "eu_pid",
+            format: formatValue,
+            meta: {
+              doctype_values: ["eu.europa.ec.eudi.pid.1"]
+            },
+            claims: [
+              { path: ["eu.europa.ec.eudi.pid.1", "family_name"] },
+              { path: ["eu.europa.ec.eudi.pid.1", "given_name"] },
+              { path: ["eu.europa.ec.eudi.pid.1", "birth_date"] }
+            ]
           }]
         }
       });
+
+      const credential = await requestWithFallbacks([
+        buildCredentialOptions("openid4vp-v1-unsigned", buildMdocData("org-iso-mdoc")),
+        buildCredentialOptions("openid4vp-v1", buildMdocData("org-iso-mdoc")),
+        buildCredentialOptions("openid4vp-v1-unsigned", buildMdocData("mso_mdoc")),
+        buildCredentialOptions("openid4vp-v1", buildMdocData("mso_mdoc")),
+        buildCredentialOptions("openid4vp-v1-unsigned", buildMdocData("mdoc")),
+        buildCredentialOptions("openid4vp-v1", buildMdocData("mdoc"))
+      ]);
 
       setResult(
         'Received credential:\\n' +
         safeStringify(credential)
       );
     } catch (e) {
-      setResult(formatError(e));
+      setResult(formatError(e) + '\n\n' + safeStringify(getDebugInfo()));
     }
   });
 </script>
