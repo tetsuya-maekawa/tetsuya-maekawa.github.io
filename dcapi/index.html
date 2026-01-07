@@ -24,7 +24,7 @@
 </head>
 <body>
   <!-- <h1>SD-JWT Credential Request Test</h1> -->
-  <h1>Digital Credential Request Test (V24)</h1>
+  <h1>Digital Credential Request Test (V25)</h1>
   <div class="buttonRow">
     <button id="requestSdJwtBtn" class="requestBtn">Request SD-JWT Credential</button>
     <button id="requestMdocBtn" class="requestBtn">Request EU PID (mdoc)</button>
@@ -132,6 +132,15 @@
       { namespace: "eu.europa.ec.eudi.pid.1", name: "nationality", intentToRetain: false }
     ];
     return JSON.stringify({ docType, fields });
+  }
+
+  function buildMdocEncryptionInfo(){
+    // NOTE: Safari requires encryptionInfo (DOMString). In production, this should be
+    // a CBOR/COSE-based value (often base64url) generated server-side.
+    if (typeof window.MDOC_ENCRYPTION_INFO === 'string' && window.MDOC_ENCRYPTION_INFO) {
+      return window.MDOC_ENCRYPTION_INFO;
+    }
+    return JSON.stringify({ placeholder: true });
   }
 
   function isTypeError(e){
@@ -295,6 +304,7 @@
             protocol: "org-iso-mdoc",
             data: {
               deviceRequest: buildMdocDeviceRequest(),
+              encryptionInfo: buildMdocEncryptionInfo(),
               selector: {
                 docType: "eu.europa.ec.eudi.pid.1",
                 fields: [
