@@ -24,7 +24,7 @@
 </head>
 <body>
   <!-- <h1>SD-JWT Credential Request Test</h1> -->
-  <h1>Digital Credential Request Test (V21)</h1>
+  <h1>Digital Credential Request Test (V22)</h1>
   <div class="buttonRow">
     <button id="requestSdJwtBtn" class="requestBtn">Request SD-JWT Credential</button>
     <button id="requestMdocBtn" class="requestBtn">Request EU PID (mdoc)</button>
@@ -91,6 +91,23 @@
     } catch (e) {
       return String(value);
     }
+  }
+
+  function bytesToBase64(bytes){
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
+  function getRandomNonceBase64(){
+    const cryptoObj = typeof window !== 'undefined' ? window.crypto : undefined;
+    if (cryptoObj && typeof cryptoObj.getRandomValues === 'function') {
+      const bytes = cryptoObj.getRandomValues(new Uint8Array(16));
+      return bytesToBase64(bytes);
+    }
+    return btoa(String(Date.now()));
   }
 
   function getDebugInfo(){
@@ -257,37 +274,27 @@
     if (!ensureDigitalCredentialSupported()) return;
 
     try {
-      const buildMdocData = (formatValue) => ({
-        client_id: location.origin,
-        client_id_scheme: "web-origin",
-        response_type: "vp_token",
-        response_mode: "dc_api",
-        state: getRandomUUID(),
-        nonce: getRandomUUID(),
-        dcql_query: {
-          credentials: [{
-            id: "eu_pid",
-            format: formatValue,
-            meta: {
-              doctype_values: ["eu.europa.ec.eudi.pid.1"]
-            },
-            claims: [
-              { path: ["eu.europa.ec.eudi.pid.1", "family_name"] },
-              { path: ["eu.europa.ec.eudi.pid.1", "given_name"] },
-              { path: ["eu.europa.ec.eudi.pid.1", "birth_date"] }
-            ]
+      const credential = await navigator.credentials.get({
+        digital: {
+          requests: [{
+            protocol: "org-iso-mdoc",
+            data: {
+              selector: {
+                docType: "eu.europa.ec.eudi.pid.1",
+                fields: [
+                  { namespace: "eu.europa.ec.eudi.pid.1", name: "family_name", intentToRetain: false },
+                  { namespace: "eu.europa.ec.eudi.pid.1", name: "given_name", intentToRetain: false },
+                  { namespace: "eu.europa.ec.eudi.pid.1", name: "birth_date", intentToRetain: false },
+                  { namespace: "eu.europa.ec.eudi.pid.1", name: "age_over_18", intentToRetain: false },
+                  { namespace: "eu.europa.ec.eudi.pid.1", name: "nationality", intentToRetain: false }
+                ]
+              },
+              nonce: getRandomNonceBase64(),
+              readerPublicKey: null
+            }
           }]
         }
       });
-
-      const credential = await requestWithFallbacks([
-        buildCredentialOptions("openid4vp-v1-unsigned", buildMdocData("org-iso-mdoc")),
-        buildCredentialOptions("openid4vp-v1", buildMdocData("org-iso-mdoc")),
-        buildCredentialOptions("openid4vp-v1-unsigned", buildMdocData("mso_mdoc")),
-        buildCredentialOptions("openid4vp-v1", buildMdocData("mso_mdoc")),
-        buildCredentialOptions("openid4vp-v1-unsigned", buildMdocData("mdoc")),
-        buildCredentialOptions("openid4vp-v1", buildMdocData("mdoc"))
-      ]);
 
       setResult(
         'Received credential:\\n' +
