@@ -24,7 +24,7 @@
 </head>
 <body>
   <!-- <h1>SD-JWT Credential Request Test</h1> -->
-  <h1>Digital Credential Request Test (V19)</h1>
+  <h1>Digital Credential Request Test (V20)</h1>
   <div class="buttonRow">
     <button id="requestSdJwtBtn" class="requestBtn">Request SD-JWT Credential</button>
     <button id="requestMdocBtn" class="requestBtn">Request EU PID (mdoc)</button>
@@ -47,7 +47,47 @@
       setResult('Error: Digital Credentials API is not supported in this browser');
       return false;
     }
+    if (!navigator.credentials || typeof navigator.credentials.get !== 'function') {
+      setResult('Error: navigator.credentials.get is not available in this browser');
+      return false;
+    }
     return true;
+  }
+
+  function getRandomUUID(){
+    if (crypto && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    if (crypto && typeof crypto.getRandomValues === 'function') {
+      const bytes = crypto.getRandomValues(new Uint8Array(16));
+      bytes[6] = (bytes[6] & 0x0f) | 0x40;
+      bytes[8] = (bytes[8] & 0x3f) | 0x80;
+      const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0'));
+      return [
+        hex.slice(0, 4).join(''),
+        hex.slice(4, 6).join(''),
+        hex.slice(6, 8).join(''),
+        hex.slice(8, 10).join(''),
+        hex.slice(10, 16).join('')
+      ].join('-');
+    }
+    return String(Date.now()) + Math.random().toString(16).slice(2);
+  }
+
+  function safeStringify(value){
+    try {
+      const seen = new WeakSet();
+      return JSON.stringify(value, (key, val) => {
+        if (typeof val === 'bigint') return val.toString();
+        if (val && typeof val === 'object') {
+          if (seen.has(val)) return '[Circular]';
+          seen.add(val);
+        }
+        return val;
+      }, 2);
+    } catch (e) {
+      return String(value);
+    }
   }
 
   function b64urlDecode(s){
@@ -124,8 +164,8 @@
               client_id_scheme: "web-origin",
               response_type: "vp_token",
               response_mode: "dc_api",
-              state: crypto.randomUUID(),
-              nonce: crypto.randomUUID(),
+              state: getRandomUUID(),
+              nonce: getRandomUUID(),
               dcql_query: {
                 credentials: [{
                   id: "employee_card",
@@ -148,7 +188,7 @@
       setResult('Processing credential...');
       setResult(
         'Received credential:\\n' +
-        JSON.stringify(credential, null, 2)
+        safeStringify(credential)
       );
 
       console.log('Received credential:', credential);
@@ -187,8 +227,8 @@
               client_id_scheme: "web-origin",
               response_type: "vp_token",
               response_mode: "dc_api",
-              state: crypto.randomUUID(),
-              nonce: crypto.randomUUID(),
+              state: getRandomUUID(),
+              nonce: getRandomUUID(),
               dcql_query: {
                 credentials: [{
                   id: "eu_pid",
@@ -210,7 +250,7 @@
 
       setResult(
         'Received credential:\\n' +
-        JSON.stringify(credential, null, 2)
+        safeStringify(credential)
       );
     } catch (e) {
       setResult(formatError(e));
