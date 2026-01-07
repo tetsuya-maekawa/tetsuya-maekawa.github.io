@@ -24,7 +24,7 @@
 </head>
 <body>
   <!-- <h1>SD-JWT Credential Request Test</h1> -->
-  <h1>Digital Credential Request Test (V23)</h1>
+  <h1>Digital Credential Request Test (V24)</h1>
   <div class="buttonRow">
     <button id="requestSdJwtBtn" class="requestBtn">Request SD-JWT Credential</button>
     <button id="requestMdocBtn" class="requestBtn">Request EU PID (mdoc)</button>
@@ -118,6 +118,20 @@
       hasNavigatorCredentials: !!navigator.credentials,
       hasNavigatorCredentialsGet: typeof navigator.credentials?.get === 'function'
     };
+  }
+
+  function buildMdocDeviceRequest(){
+    // NOTE: Safari requires deviceRequest (DOMString). In production, this should be
+    // a CBOR-encoded DeviceRequest (often base64url) generated server-side.
+    const docType = "eu.europa.ec.eudi.pid.1";
+    const fields = [
+      { namespace: "eu.europa.ec.eudi.pid.1", name: "family_name", intentToRetain: false },
+      { namespace: "eu.europa.ec.eudi.pid.1", name: "given_name", intentToRetain: false },
+      { namespace: "eu.europa.ec.eudi.pid.1", name: "birth_date", intentToRetain: false },
+      { namespace: "eu.europa.ec.eudi.pid.1", name: "age_over_18", intentToRetain: false },
+      { namespace: "eu.europa.ec.eudi.pid.1", name: "nationality", intentToRetain: false }
+    ];
+    return JSON.stringify({ docType, fields });
   }
 
   function isTypeError(e){
@@ -280,6 +294,7 @@
           requests: [{
             protocol: "org-iso-mdoc",
             data: {
+              deviceRequest: buildMdocDeviceRequest(),
               selector: {
                 docType: "eu.europa.ec.eudi.pid.1",
                 fields: [
